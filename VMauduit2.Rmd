@@ -8,6 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 rm(list = ls())
+library(randomForest)
 library(dplyr)
 library(caret)
 library(rattle)
@@ -26,7 +27,6 @@ training <- read.table('pml-training.csv',
                        sep = ',', header = TRUE)
 testing <- read.table('pml-testing.csv', 
                       sep = ',', header = TRUE)
-
 ```
 
 Data is already splitted in training and test sets, which contain `r dim(training)[1]` lines (training) and `r dim(testing)[1]` lines (testing).
@@ -59,36 +59,48 @@ qplot(pitch_forearm,
 
 The box plots show that interquartile zones are different for class A or other classes exercises (for example: acc_arm_x is globally low, magnet_arm_z is globally high, comparing to other classes). The density plot shows that only class A exercises show low values of pitch_forearm.
 
+## For cross-validation
+
+As our we have many data (`r dim(training)[1]` lines), we can cut the training set to evaluate better out-of-sample error.
+
+```{r cutting data}
+partition <- createDataPartition(y =training$classe, 
+                                 p = .75, 
+                                 list = FALSE)
+subset_train <- training[partition,]
+subset_test  <- training[-partition,]
+```
+
 # Creating a model
 
-To create a model, we will use the caret package, since it makes automatics some features. We will use a multiple cross validation with 5 folders, made 4 times. This means that our data is splitted in 5 samples, with equivalent repartition of "classe" values. And then, the simulation is done on a training set composed of four over five foldes, and evaluated on the fifth. This is performed four times. This method allows us to evaluate the out-of-sample error, since each simulation is evaluated on a out-of-sample data folder.
+To create a model, we will use the caret package, since it makes automatics some features: it chooses the best parameters for the choosen modelling. I also use cross validation with 5 folds. This means that the data is splitted in 5 samples, with equivalent repartition of “classe” values. And then, the simulation is done on a training set composed of four over five folds, and evaluated on the fifth. I can't use many trees for the random forest, due to an old computer (not enough memory or CPU.) 
 
-Because of a low powerfull computer, I can't use a random forest modelling. I use a tree modelling "rpart" (Recursive Partitioning and Regression Tree), because we deal with a classification problem. This modelling will allow us to physically understand our modelling.
+I tune the number of randmoly selected predictors for each tree (mtry). We don't need to preprocess our data (like centering or scaling) because this has poor influence in tree classification.
 
-We tune the complexity parameter (cp) ten times, to obtain a better model. We don't need to preprocess our data (like centering or scaling) because this has poor influence in tree classification.
-
-``` {r modelling data, fig.height=10, fig.width=20, fig.align = "center", dpi = 72, fig.retina = 1}
-ctrl <- trainControl(method = "repeatedcv",
+``` {r modelling data, fig.height=10, fig.width=10, fig.align = "center", dpi = 72, fig.retina = 1}
+ctrl <- trainControl(method = "cv",
                      number = 5,
-                     repeats = 4,
                      classProbs = TRUE)
 model <- train(classe ~ .,
-               data = training,
-               method = "rpart",
-               tuneLength = 10,
+               data = subset_train,
+               method = "rf",
+               tunelength = 5,
+               ntree = 10,
                trControl = ctrl)
-model
-fancyRpartPlot(model$finalModel)
+model$finalModel
+plot(varImp(object=model),
+     main="RF - Variable Importance")
 ```
 
 We can see that the most important variables of the model are: 
 
 * roll_belt
 * pitch_forearm
+* yaw_belt
 * magnet_dumbbell_y
-* roll_forearm
-* total_accel_dumbbell
+* pitch_belt
 * magnet_dumbbell_z
+* roll_forearm
 
 ## Out-of-sample error
 
@@ -98,11 +110,22 @@ The out-of-sample error is measured for each simulation case. The mean accuracy 
 qplot(model$resample$Accuracy, geom = "density")
 ```
 
-We may obtain a better prediction using a PCA (Principal Component Analysis) but it would be at the expense of variable meaning.
+We will use our "subset_test" dataframe to validate the out-of-sample error. 
+
+```{r subset-test}
+subset_test_pred <- predict(model, 
+                            newdata = subset_test)
+subset_test_real <- subset_test$classe
+cm <- confusionMatrix(subset_test_pred,
+                      subset_test_real)
+cm
+```
+
+The measured out-of-sample error is `r sprintf("%.3f", 1-cm$overall[[1]])`, wich is very close to the value measured by caret-train.
 
 # Using our model
 
-We use the model on the testing set, that contains 20 data. We don't know the real "classe" values of these items.
+We use the model on the testing set, that contains 20 data. We don't know the real "classe" values of these items so we can't verify our model on this sumilations.
 
 ```{r test prediction}
 testingPred <- predict(model, newdata = testing)
@@ -111,10 +134,4 @@ testingPred
 
 # Conclusion
 
-```{r confusion matrix}
-cm <- confusionMatrix(predict(model, data = training),
-                training$classe)
-cm
-```
-
-The model allows to alert people in case of bad type of exercise, with an overall accuracy of 68.6%. Class A corresponds to a well-done exercise. Sensitivity for class A is `r sprintf("%.1f", cm$byClass[1, 1]*100)`%. It is the percentage of well-done exercises detected over all well-done exercises. Specificity for class A is `r sprintf("%.1f", cm$byClass[1, 2]*100)`%. It is the percentage of wrong-done exercises detected over all wrong-done exercises. Specificity is better that sensitivity: we detect errors better than well-done exercises. Class A has the best sensitivity, which is good: we predict well-done exercises better than each type of error, one-by-one.
+The model allows to alert people in case of bad type of exercise, with an overall accuracy of `r sprintf("%.1f", cm$overall[[1]]*100)`%. Class A corresponds to a well-done exercise. Sensitivity for class A is the percentage of well-done exercises detected over all well-done exercises. Specificity for class A is the percentage of wrong-done exercises detected over all wrong-done exercises. They are all very close to 100%.
