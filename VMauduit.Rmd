@@ -47,7 +47,7 @@ training <- training[, colSums(is.na(training)) < 1000]
 From the first 160 variables, we keep `r dim(training)[2]`. The last one, named "classe", defines the exercice class: A is a correct exercise and B to E are different type of common errors.
 
 Some previews allow us to see that "classe" depends one the variables recorded by electronic devices:
-``` {r visualizing data, fig.height=4, fig.width=16, fig.align = "center"}
+``` {r visualizing data, fig.height=5, fig.width=20, fig.align = "center", dpi = 72, fig.retina = 1}
 featurePlot(x = select(training, contains("arm_")), 
             y = training$classe, 
             plot = "box")
@@ -57,6 +57,8 @@ qplot(pitch_forearm,
       geom = "density")
 ```
 
+The box plots show that interquartile zones are different for class A or other classes exercises (for example: acc_arm_x is globally low, magnet_arm_z is globally high, comparing to other classes). The density plot shows that only class A exercises show low values of pitch_forearm.
+
 # Creating a model
 
 To create a model, we will use the caret package, since it makes automatics some features. We will use a multiple cross validation with 5 folders, made 4 times. This means that our data is splitted in 5 samples, with equivalent repartition of "classe" values. And then, the simulation is done on a training set composed of four over five foldes, and evaluated on the fifth. This is performed four times. This method allows us to evaluate the out-of-sample error, since each simulation is evaluated on a out-of-sample data folder.
@@ -65,7 +67,7 @@ Because of a low powerfull computer, I can't use a random forest modelling. I us
 
 We tune the complexity parameter (cp) ten times, to obtain a better model. We don't need to preprocess our data (like centering or scaling) because this has poor influence in tree classification.
 
-``` {r modelling data, fig.height=10, fig.width=20, fig.align = "center"}
+``` {r modelling data, fig.height=10, fig.width=20, fig.align = "center", dpi = 72, fig.retina = 1}
 ctrl <- trainControl(method = "repeatedcv",
                      number = 5,
                      repeats = 4,
@@ -92,7 +94,7 @@ We can see that the most important variables of the model are:
 
 The out-of-sample error is measured for each simulation case. The mean accuracy is provided in the model (up). The error is one minus accuracy: `r sprintf("%.3f", 1-mean(model$resample$Accuracy))`. We show below the density plot of all measured accuracies (twenty values).
 
-```{r out-of-sample error, fig.height=3, fig.width=3, fig.align = "center"}
+```{r out-of-sample error, fig.height=2, fig.width=2, fig.align = "center", dpi = 72, fig.retina = 1}
 qplot(model$resample$Accuracy, geom = "density")
 ```
 
